@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import pdfParse from "pdf-parse";
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,12 +13,11 @@ export async function POST(request: NextRequest) {
     if (!file) {
       return NextResponse.json({ error: "No PDF file provided" }, { status: 400 });
     }
-
     if (file.type !== "application/pdf") {
       return NextResponse.json({ error: "File must be a PDF" }, { status: 400 });
     }
 
-    // Convert file to buffer and extract text
+    // Extract text from PDF
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const pdfData = await pdfParse(buffer);
@@ -28,21 +25,16 @@ export async function POST(request: NextRequest) {
 
     if (!pdfText || pdfText.trim().length < 100) {
       return NextResponse.json(
-        { error: "Could not extract meaningful text from the PDF. Make sure it's not a scanned image." },
+        { error: "Could not extract text from PDF. Make sure it's not a scanned image." },
         { status: 400 }
       );
     }
 
-    // Truncate to ~15000 chars to stay within context limits
     const truncatedText = pdfText.slice(0, 15000);
 
-    const message = await client.messages.create({
-      model: "claude-opus-4-5",
-      max_tokens: 4096,
-      messages: [
-        {
-          role: "user",
-          content: `You are an expert educator. Analyze the following PDF content and generate exactly ${count} high-quality Q&A flashcards.
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const prompt = `You are an expert educator. Analyze the following PDF content and generate exactly ${count} high-quality Q&A flashcards.
 
 Rules:
 - Questions should test understanding, not just recall
@@ -62,18 +54,13 @@ Return ONLY a valid JSON array (no markdown, no explanation) in this exact forma
 ]
 
 PDF Content:
-${truncatedText}`,
-        },
-      ],
-    });
+${truncatedText}`;
 
-    const responseText =
-      message.content[0].type === "text" ? message.content[0].text : "";
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
 
-    // Parse JSON response
     let flashcards;
     try {
-      // Strip any accidental markdown fences
       const cleaned = responseText.replace(/```json|```/g, "").trim();
       flashcards = JSON.parse(cleaned);
     } catch {
