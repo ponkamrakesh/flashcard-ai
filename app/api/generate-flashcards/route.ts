@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import Groq from "groq-sdk";
 import pdfParse from "pdf-parse";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "placeholder" });
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,7 +17,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "File must be a PDF" }, { status: 400 });
     }
 
-    // Extract text from PDF
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const pdfData = await pdfParse(buffer);
@@ -32,9 +31,12 @@ export async function POST(request: NextRequest) {
 
     const truncatedText = pdfText.slice(0, 15000);
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
-
-    const prompt = `You are an expert educator. Analyze the following PDF content and generate exactly ${count} high-quality Q&A flashcards.
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "user",
+          content: `You are an expert educator. Analyze the following PDF content and generate exactly ${count} high-quality Q&A flashcards.
 
 Rules:
 - Questions should test understanding, not just recall
@@ -54,10 +56,14 @@ Return ONLY a valid JSON array (no markdown, no explanation) in this exact forma
 ]
 
 PDF Content:
-${truncatedText}`;
+${truncatedText}`,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 4096,
+    });
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
+    const responseText = completion.choices[0]?.message?.content || "";
 
     let flashcards;
     try {
