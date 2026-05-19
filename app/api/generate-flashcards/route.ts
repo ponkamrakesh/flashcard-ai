@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     const truncatedText = pdfText.slice(0, 15000);
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-lite" });
 
     const prompt = `You are an expert educator. Analyze the following PDF content and generate exactly ${count} high-quality Q&A flashcards.
 
